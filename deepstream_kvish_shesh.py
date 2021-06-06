@@ -1,27 +1,5 @@
 #!/usr/bin/env python3
 
-################################################################################
-# Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-################################################################################
-
 import sys
 sys.path.append('../')
 import gi
@@ -108,10 +86,13 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
                     except StopIteration:
                         break
 
-                    # print("LP: {}".format(label_info.result_label))
-                    # print("LP Unique ID: {}".format(obj_meta.object_id))
-                    # print("PROB: {}\n".format(label_info.result_prob))
-                    if label_info.result_prob > 0.8 and (len(label_info.result_label) == 7 or len(label_info.result_label) == 8):
+                    # LP: label_info.result_label
+                    # LP Unique ID: obj_meta.object_id
+                    # PROB: label_info.result_prob
+
+                    if label_info.result_prob > 0.8 and \
+                       label_info.result_label.isnumeric() and \
+                       (len(label_info.result_label) == 7 or len(label_info.result_label) == 8):
                         obj_meta.text_params.text_bg_clr.set(0.0, 0.7, 0.0, 0.5)
                         obj_meta.text_params.font_params.font_color.set(0.0, 0.0, 0.0, 1.0)
 
@@ -147,9 +128,9 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
         # memory will not be claimed by the garbage collector.
         # Reading the display_text field here will return the C address of the
         # allocated string. Use pyds.get_string() to get the string content.
-        text = "Frame Number={} Number of Objects={} Vehicle_count={}\n".format(frame_number, num_rects, obj_counter[PGIE_CLASS_ID_VEHICLE])
+        text = "Frame Number={} Number of Objects={} Vehicle_count={}".format(frame_number, num_rects, obj_counter[PGIE_CLASS_ID_VEHICLE])
         for id in LP_dict:
-            text = text + "LP {}, PROB: {}\n".format(LP_dict[id][0], LP_dict[id][1])
+            text = text + "\nLP: {:10s} PROB: {}".format(LP_dict[id][0], round(LP_dict[id][1]*100, 2))
 
         py_nvosd_text_params.display_text = text
                                                  
