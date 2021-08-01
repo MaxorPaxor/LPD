@@ -61,7 +61,7 @@ output-blob-names=output_bbox/BiasAdd;output_cov/Sigmoid
 network-type=1
 parse-classifier-func-name=NvDsInferParseCustomNVPlate
 custom-lib-path=../nvinfer_custom_lpr_parser/libnvdsinfer_custom_impl_lpr.so
-process_mode=2
+process-mode=2
 operate-on-gie-id=2
 operate-on-class-ids=0
 net-scale-factor=0.00392156862745098
@@ -70,4 +70,4 @@ net-scale-factor=0.00392156862745098
 model-color-format=0
 
 [class-attrs-all]
-threshold=0.9
+threshold=0.5 #0.9

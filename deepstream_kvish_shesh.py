@@ -11,6 +11,7 @@ import configparser
 import pyds
 
 fps_streams={}
+LP_dict = {}
 
 PGIE_CLASS_ID_VEHICLE = 0
 PGIE_CLASS_ID_BICYCLE = 1
@@ -18,7 +19,8 @@ PGIE_CLASS_ID_PERSON = 2
 PGIE_CLASS_ID_ROADSIGN = 3
 
 LIVE_VIDEO = False
-LP_dict = {}
+SAVE_VIDEO = False
+
 
 def osd_sink_pad_buffer_probe(pad,info,u_data):
     frame_number=0
@@ -57,6 +59,9 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
         num_rects = frame_meta.num_obj_meta
         l_obj=frame_meta.obj_meta_list
 
+        frame_width = frame_meta.source_frame_width
+        frame_height = frame_meta.source_frame_height
+
         while l_obj is not None:
             try:
                 # Casting l_obj.data to pyds.NvDsObjectMeta
@@ -90,6 +95,7 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
                     # LP Unique ID: obj_meta.object_id
                     # PROB: label_info.result_prob
 
+                    ### Israeli car
                     if label_info.result_prob > 0.8 and \
                        label_info.result_label.isnumeric() and \
                        (len(label_info.result_label) == 7 or len(label_info.result_label) == 8):
@@ -99,9 +105,24 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
                         if obj_meta.object_id in LP_dict:
                             if LP_dict[obj_meta.object_id][1] < label_info.result_prob:
                                 LP_dict[obj_meta.object_id] = [label_info.result_label, label_info.result_prob]
+                                print(LP_dict)
+
+                    ### Any car
+                    # print(label_info.result_prob)
+                    # print(label_info.result_label)
+                    # if label_info.result_prob >= 0.0:
+                    #     obj_meta.text_params.text_bg_clr.set(0.0, 0.7, 0.0, 0.5)
+                    #     obj_meta.text_params.font_params.font_color.set(0.0, 0.0, 0.0, 1.0)
+
+                    #     if obj_meta.object_id in LP_dict:
+                    #         if LP_dict[obj_meta.object_id][1] < label_info.result_prob:
+                    #             LP_dict[obj_meta.object_id] = [label_info.result_label, label_info.result_prob]
+                    #             print(LP_dict)
+
                         else:
                             LP_dict[obj_meta.object_id] = [label_info.result_label, label_info.result_prob]
-                
+                            print(LP_dict)
+
                     try:
                         l_label=l_label.next
                     except StopIteration:
@@ -129,6 +150,7 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
         # Reading the display_text field here will return the C address of the
         # allocated string. Use pyds.get_string() to get the string content.
         text = "Frame Number={} Number of Objects={} Vehicle_count={}".format(frame_number, num_rects, obj_counter[PGIE_CLASS_ID_VEHICLE])
+        text = text + "\n{}x{}, LP Size: {}x{}".format(frame_width, frame_height, int(frame_width*145/1920), int(frame_height*80/1080))
         for id in LP_dict:
             text = text + "\nLP: {:10s} PROB: {}".format(LP_dict[id][0], round(LP_dict[id][1]*100, 2))
 
@@ -218,8 +240,13 @@ def main(args):
         # Source element for reading from the file
         print("Creating Source \n ")
         source = Gst.ElementFactory.make("filesrc", "file-source")
+        # source = Gst.ElementFactory.make("uridecodebin", "file-source")
         if not source:
             sys.stderr.write(" Unable to create Source \n")
+
+        mp4demux = Gst.ElementFactory.make("qtdemux", "mp4-demux")
+        if not mp4demux:
+            sys.stderr.write(" Unable to create mp4 demux \n")
 
         # Since the data format in the input file is elementary h264 stream,
         # we need a h264parser
@@ -234,48 +261,76 @@ def main(args):
         if not decoder:
             sys.stderr.write(" Unable to create Nvv4l2 Decoder \n")
 
+
     # Create nvstreammux instance to form batches from one or more sources.
     streammux = Gst.ElementFactory.make("nvstreammux", "Stream-muxer")
     if not streammux:
         sys.stderr.write(" Unable to create NvStreamMux \n")
-
     # Use nvinfer to run inferencing on decoder's output,
     # behaviour of inferencing is set through config file
     pgie = Gst.ElementFactory.make("nvinfer", "primary-inference")
     if not pgie:
         sys.stderr.write(" Unable to create pgie \n")
-
     tracker = Gst.ElementFactory.make("nvtracker", "tracker")
     if not tracker:
         sys.stderr.write(" Unable to create tracker \n")
-    
     sgie1 = Gst.ElementFactory.make("nvinfer", "secondary1-nvinference-engine")
     if not sgie1:
         sys.stderr.write(" Unable to make sgie1 \n")
-
     sgie2 = Gst.ElementFactory.make("nvinfer", "secondary2-nvinference-engine")
     if not sgie2:
         sys.stderr.write(" Unable to make sgie2 \n")
-
     # Use convertor to convert from NV12 to RGBA as required by nvosd
     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "convertor")
     if not nvvidconv:
         sys.stderr.write(" Unable to create nvvidconv \n")
-
     # Create OSD to draw on the converted RGBA buffer
     nvosd = Gst.ElementFactory.make("nvdsosd", "onscreendisplay")
-
     if not nvosd:
         sys.stderr.write(" Unable to create nvosd \n")
+
+    ### TEST: Trying to import to mp4
+    nvvidconv_postosd = Gst.ElementFactory.make("nvvideoconvert", "convertor_postosd")
+    if not nvvidconv_postosd:
+        sys.stderr.write(" Unable to create nvvidconv_postosd \n")
+
+    # Create a caps filter
+    caps = Gst.ElementFactory.make("capsfilter", "filter")
+    caps.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=I420"))
+
+    # Make the encoder
+    encoder = Gst.ElementFactory.make("nvv4l2h264enc", "encoder")
+    print("Creating H264 Encoder")
+    if not encoder:
+        sys.stderr.write(" Unable to create encoder")
+
+    encoder.set_property('bitrate', 40000000)
+    if is_aarch64():
+        encoder.set_property('preset-level', 1)
+        encoder.set_property('insert-sps-pps', 1)
+        encoder.set_property('bufapi-version', 1)
+    
+    ### END TEST
 
     # Finally render the osd output
     if is_aarch64():
         transform = Gst.ElementFactory.make("nvegltransform", "nvegl-transform")
 
-    print("Creating EGLSink \n")
-    sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
-    if not sink:
-        sys.stderr.write(" Unable to create egl sink \n")
+    if SAVE_VIDEO:
+        print("Creating FileSink \n")
+        sink = Gst.ElementFactory.make("filesink", "nvvideo-renderer")
+        if not sink:
+            sys.stderr.write(" Unable to create file sink \n")
+        # sink.set_property("location", "output.264")
+        sink.set_property("location", "output.mp4")
+        sink.set_property("async", 'false')
+
+    else:
+        print("Creating EGLSink \n")
+        sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
+        if not sink:
+            sys.stderr.write(" Unable to create egl sink \n")
+
 
     if LIVE_VIDEO:
         print("Playing cam %s " %args[1])
@@ -286,11 +341,14 @@ def main(args):
     else:
         print("Playing file %s " %args[1])
         source.set_property('location', args[1])
+        # source.set_property("uri", "file://"+args[1])
     
     streammux.set_property('width', 1280)
     streammux.set_property('height', 720)
+    # streammux.set_property('width', 860)
+    # streammux.set_property('height', 640)   
     streammux.set_property('batch-size', 1)
-    streammux.set_property('batched-push-timeout', 4000000)
+    streammux.set_property('batched-push-timeout', 40000)
 
     pgie.set_property('config-file-path', "./configs/trafficamnet_config.txt")
     sgie1.set_property('config-file-path', "./configs/lpd_us_config.txt")
@@ -304,7 +362,7 @@ def main(args):
 
     if LIVE_VIDEO:
         # Set sync = false to avoid late frame drops at the display-sink
-        sink.set_property('sync', False)  # Max: Worth checking this
+        sink.set_property('sync', False)
 
     # Set properties of tracker
     config = configparser.ConfigParser()
@@ -340,6 +398,7 @@ def main(args):
         pipeline.add(nvvidconvsrc)
         pipeline.add(caps_vidconvsrc)
     else:
+        pipeline.add(mp4demux)
         pipeline.add(h264parser)
         pipeline.add(decoder)
     
@@ -350,9 +409,15 @@ def main(args):
     pipeline.add(sgie2)
     pipeline.add(nvvidconv)
     pipeline.add(nvosd)
-    pipeline.add(sink)
+    if SAVE_VIDEO:
+        pipeline.add(nvvidconv_postosd)
+        pipeline.add(caps)
+        pipeline.add(encoder)
+
     if is_aarch64():
         pipeline.add(transform)
+    
+    pipeline.add(sink)
 
     # we link the elements together
     # file-source -> h264-parser -> nvh264-decoder ->
@@ -376,6 +441,7 @@ def main(args):
 
     else:
         source.link(h264parser)
+        # mp4demux.link(h264parser)
         h264parser.link(decoder)
         sinkpad = streammux.get_request_pad("sink_0")
         if not sinkpad:
@@ -393,11 +459,19 @@ def main(args):
     sgie2.link(tracker)
     tracker.link(nvvidconv)
     nvvidconv.link(nvosd)
-    if is_aarch64():
-        nvosd.link(transform)
-        transform.link(sink)
+
+    if SAVE_VIDEO:
+        nvosd.link(nvvidconv_postosd)
+        nvvidconv_postosd.link(caps)
+        caps.link(encoder)
+        encoder.link(sink)
+
     else:
-        nvosd.link(sink)
+        if is_aarch64():
+            nvosd.link(transform)
+            transform.link(sink)
+        else:
+            nvosd.link(sink)
 
     # create an event loop and feed gstreamer bus mesages to it
     loop = GObject.MainLoop()
@@ -424,6 +498,7 @@ def main(args):
 
     # cleanup
     pipeline.set_state(Gst.State.NULL)
+
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))

@@ -1,0 +1,11 @@
+# Create .264 video steam out of .mp4
+# ffmpeg -i output.mp4 -codec:v libx264 -aud 1 output.264
+
+# Cut .mp4 video
+# ffmpeg -i tel_aviv_1080.mp4 -ss 00:00:00 -t 00:00:10 -async 1 tel_aviv_1080_cut.mp4
+
+# Create high-quality fast GIF
+# ffmpeg -i success_distractor_6m.avi -r 10 -vf "scale=640:-1,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -ss 00:00:00 -to 00:00:45 -filter:v "setpts=PTS/4" test_flight_640.gif
+
+# Normal fast GIF
+ffmpeg -i success_distractor_6m.avi -r 10 -vf "scale=640:-1" -ss 00:00:00 -to 00:00:45 -filter:v "setpts=PTS/4" test_flight_640.gif
