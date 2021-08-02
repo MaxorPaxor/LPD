@@ -109,4 +109,62 @@ https://docs.nvidia.com/metropolis/deepstream/dev-guide/text/DS_plugin_metadata.
 
 ## Neural Network Review:
 
-The input frame goes through 3 neural networks in the pipeline
+### inference
+
+The input frame goes through 3 neural networks in the pipeline. 
+The inference is done via nvinfer elements (Element number 7, 9, 10).
+Each nvinfer element has a 'config-file-path' property which points to a config file.
+
+Every config file points to a NN file, for example, our main detector's config file `./configs/trafficamnet_config.txt` has the following lines:
+
+```
+tlt-encoded-model=../models/trafficcamnet/resnet18_trafficcamnet_pruned.etlt
+labelfile-path=../models/trafficcamnet/labels.txt
+int8-calib-file=../models/trafficcamnet/trafficnet_int8.bin
+model-engine-file=../models/trafficcamnet/resnet18_trafficcamnet_pruned.etlt_b1_gpu0_int8.engine
+```
+
+`tlt-encoded-model` is the original model downloaded from Nvidia's catalog, this model is pruned.
+
+`labelfile-path` contains the labels of the network. Downloaded from the catalog.
+
+`int8-calib-file` is a calibration file required for creating an INT8 TRT engine file. Also downloaded from the catalog.
+
+`model-engine-file` is a TRT engine file, created automaticly on the first run.
+
+More properties can be defined in the config file line `infer-dims`, `batch-size`, `network-mode` (FP32, INT8, FP16) and more.
+
+### Models
+
+**Main Detector**
+
+The main detector is TrafficCamNet Model which is NVIDIA DetectNet_v2 detector with ResNet18 as a feature extractor. The model is pretrained to detect and classify 4 catogeries: car, persons, road signs and two-wheelers.
+
+https://ngc.nvidia.com/catalog/models/nvidia:tlt_trafficcamnet
+
+**Licsense Plate Detector**
+
+The Secondary detector LPDNet, which is has the same architecture as the main detector, is pretrained to detect a LP object from a car images.
+
+https://ngc.nvidia.com/catalog/models/nvidia:tlt_lpdnet
+
+**Licsense Plate Recognition**
+
+The last NN Element in the pipeline is the LPRNet, which aims to recognize characters in license plates from cropped RGB license plate images.
+
+https://ngc.nvidia.com/catalog/models/nvidia:tlt_lprnet
+
+DS5.0.1 gst-nvinfer cannot generate TRT engine for LPR model, so generate it with tlt-converter
+
+```
+./tlt-converter -k nvidia_tlt -p image_input,1x3x48x96,4x3x48x96,16x3x48x96 \
+           ../models/LP/LPR/us_lprnet_baseline18_deployable.etlt -t fp16 -e ../models/LP/LPR/lpr_us_onnx_b16.engine
+```
+In addition, custom parser for lpr must be built:
+```
+cd nvinfer_custom_lpr_parser
+make
+cd ..
+```
+
+## Transfer Learning
